@@ -43,7 +43,7 @@ dependencies {
     implementation(libs.androidx.appcompat)
     implementation(libs.material)
     
-    // ML Kit Text Recognition
+    // ML Kit Text Recognition (Unified version for stability)
     implementation("com.google.android.gms:play-services-mlkit-text-recognition:19.0.1")
     
     testImplementation(libs.junit)
