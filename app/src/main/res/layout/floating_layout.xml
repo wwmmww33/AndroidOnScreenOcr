@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <!-- طبقة التعتيم -->
+    <View
+        android:id="@+id/overlay_bg"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#60000000" />
+
+    <!-- واجهة الرسم -->
+    <com.example.onscreenocr2.SelectionView
+        android:id="@+id/selectionView"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
+    <!-- أزرار التحكم (تظهر بعد التحديد) -->
+    <LinearLayout
+        android:id="@+id/layoutOptions"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:background="@drawable/bubble_background"
+        android:orientation="horizontal"
+        android:padding="10dp"
+        android:visibility="gone">
+
+        <Button
+            android:id="@+id/btnArabic"
+            android:layout_width="60dp"
+            android:layout_height="60dp"
+            android:background="@drawable/button_round_arabic"
+            android:text="ع"
+            android:textColor="#FFFFFF"
+            android:textSize="20sp"
+            android:textStyle="bold" />
+
+        <Button
+            android:id="@+id/btnEnglish"
+            android:layout_width="60dp"
+            android:layout_height="60dp"
+            android:layout_marginStart="10dp"
+            android:background="@drawable/button_round_english"
+            android:text="e"
+            android:textColor="#FFFFFF"
+            android:textSize="20sp"
+            android:textStyle="bold" />
+
+        <Button
+            android:id="@+id/btnCancel"
+            android:layout_width="60dp"
+            android:layout_height="60dp"
+            android:layout_marginStart="10dp"
+            android:background="@drawable/bubble_background"
+            android:text="X"
+            android:textColor="#FFFFFF"
+            android:textSize="20sp" />
+    </LinearLayout>
+
+</FrameLayout>
