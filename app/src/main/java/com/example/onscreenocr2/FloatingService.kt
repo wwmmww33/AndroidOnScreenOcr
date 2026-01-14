@@ -27,6 +27,8 @@ class FloatingService : Service() {
     private lateinit var windowManager: WindowManager
     private lateinit var mediaProjectionManager: MediaProjectionManager
     private var mediaProjection: MediaProjection? = null
+    private var virtualDisplay: VirtualDisplay? = null
+    private var imageReader: ImageReader? = null
     
     private lateinit var overlayView: View
     private lateinit var bubbleView: View
@@ -63,87 +65,82 @@ class FloatingService : Service() {
             getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
         }
         return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("OCR Service Active")
-            .setContentText("Ready to capture screen multiple times")
+            .setContentTitle("OCR Running")
+            .setContentText("Ready to capture multiple times")
             .setSmallIcon(android.R.drawable.ic_menu_camera)
-            .setPriority(NotificationCompat.PRIORITY_LOW)
             .build()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (mediaProjection == null && mediaProjectionResultData != null) {
-            initializeMediaProjection()
+            setupMediaProjection()
         }
         return START_STICKY
     }
 
-    private fun initializeMediaProjection() {
+    private fun setupMediaProjection() {
         try {
             mediaProjection = mediaProjectionManager.getMediaProjection(Activity.RESULT_OK, mediaProjectionResultData!!)
+            
+            imageReader = ImageReader.newInstance(screenWidth, screenHeight, PixelFormat.RGBA_8888, 2)
+            
+            virtualDisplay = mediaProjection?.createVirtualDisplay(
+                "OCR_PERMANENT", screenWidth, screenHeight, screenDensity,
+                DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
+                imageReader?.surface, null, null
+            )
+
             mediaProjection?.registerCallback(object : MediaProjection.Callback() {
                 override fun onStop() {
-                    mediaProjection = null
+                    releaseProjection()
                 }
             }, mainHandler)
+
+            showGlobalToast("✅ Engine Ready")
         } catch (e: Exception) {
-            Log.e("OCR", "Error init projection: ${e.message}")
+            Log.e("OCR", "Setup failed: ${e.message}")
         }
     }
 
     private fun startCaptureProcess() {
-        if (mediaProjection == null && mediaProjectionResultData != null) {
-            initializeMediaProjection()
-        }
-
         if (mediaProjection == null) {
-            showGlobalToast("❌ Session expired. Please restart main app.")
-            val intent = Intent(this, MainActivity::class.java)
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            startActivity(intent)
+            showGlobalToast("❌ Session expired. Re-open app.")
             return
         }
-
         if (currentRect == null) return
 
         resetOverlay()
 
         mainHandler.postDelayed({
-            captureScreen()
-        }, 600)
+            captureFromBuffer()
+        }, 500)
     }
 
-    private fun captureScreen() {
+    private fun captureFromBuffer() {
         try {
-            val reader = ImageReader.newInstance(screenWidth, screenHeight, PixelFormat.RGBA_8888, 2)
-            val virtualDisplay = mediaProjection?.createVirtualDisplay(
-                "OCR_SCAN", screenWidth, screenHeight, screenDensity,
-                0, reader.surface, null, mainHandler
+            val image = imageReader?.acquireLatestImage()
+            if (image == null) {
+                mainHandler.postDelayed({ captureFromBuffer() }, 100)
+                return
+            }
+
+            val planes = image.planes
+            val buffer = planes[0].buffer
+            val pixelStride = planes[0].pixelStride
+            val rowStride = planes[0].rowStride
+            val rowPadding = rowStride - pixelStride * screenWidth
+
+            val bitmap = Bitmap.createBitmap(
+                screenWidth + rowPadding / pixelStride,
+                screenHeight,
+                Bitmap.Config.ARGB_8888
             )
+            bitmap.copyPixelsFromBuffer(buffer)
+            image.close()
 
-            reader.setOnImageAvailableListener({ r ->
-                val image = r.acquireLatestImage() ?: return@setOnImageAvailableListener
-                
-                val planes = image.planes
-                val buffer = planes[0].buffer
-                val pixelStride = planes[0].pixelStride
-                val rowStride = planes[0].rowStride
-                val rowPadding = rowStride - pixelStride * screenWidth
-
-                val bitmap = Bitmap.createBitmap(
-                    screenWidth + rowPadding / pixelStride,
-                    screenHeight,
-                    Bitmap.Config.ARGB_8888
-                )
-                bitmap.copyPixelsFromBuffer(buffer)
-                
-                image.close()
-                r.setOnImageAvailableListener(null, null)
-                virtualDisplay?.release()
-                reader.close()
-
-                processResult(bitmap)
-            }, mainHandler)
+            processResult(bitmap)
         } catch (e: Exception) {
+            Log.e("OCR", "Buffer Error: ${e.message}")
             showGlobalToast("❌ Capture failed")
         }
     }
@@ -167,13 +164,21 @@ class FloatingService : Service() {
                         copyToClipboard(visionText.text)
                         showGlobalToast("✅ Text Copied!")
                     } else {
-                        showGlobalToast("ℹ️ No text found in this area")
+                        showGlobalToast("ℹ️ No text found")
                     }
                 }
                 .addOnFailureListener { showGlobalToast("❌ OCR Failed") }
         } catch (e: Exception) {
             showGlobalToast("❌ Processing Error")
         }
+    }
+
+    private fun releaseProjection() {
+        virtualDisplay?.release()
+        virtualDisplay = null
+        imageReader?.close()
+        imageReader = null
+        mediaProjection = null
     }
 
     private fun initOverlayView() {
@@ -277,7 +282,7 @@ class FloatingService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
-        mediaProjection?.stop()
+        releaseProjection()
     }
 
     override fun onBind(intent: Intent?) = null
